@@ -1,0 +1,66 @@
+flowchart TD
+    %% Setup Phase
+    subgraph Setup ["1. Setup Phase"]
+        S1(["Start"]) --> S2["Init Serial 115200"]
+        S2 --> S3["Set Pin 2 as OUTPUT"]
+        S3 --> S4["Set CAN Pins RX=4, TX=5"]
+        S4 --> S5["Init CAN 500kbps"]
+        S5 --> S6{"Init Success?"}
+        S6 -- No --> S7["Print Error & Halt"]
+        S6 -- Yes --> S8["Print Ready Message"]
+        S8 --> S9["Attach onCANReceive ISR"]
+        S9 --> L1(["Enter Loop"])
+    end
+
+    %% Loop Phase
+    subgraph Loop ["2. Main Loop Phase"]
+        L1 --> L2{"msgReceived == true?"}
+        L2 -- Yes --> L3{"rxPacketId == 0x124?"}
+        L3 -- Yes --> L4["LED ON, Delay 1s"]
+        L4 --> L5["LED OFF, Delay 1s"]
+        L5 --> L6["Print ID, Len, Data"]
+        L6 --> L7["Loop: Print Hex & Char of Data"]
+        L7 --> L8["Print Newline"]
+        L3 -- No --> L8
+        L2 -- No --> L9["msgReceived = false"]
+        L8 --> L9
+        
+        L9 --> L10{"Serial.available() > 0?"}
+        L10 -- Yes --> L11["Read incomingByte"]
+        L11 --> L12{"incomingByte is Newline or CR?"}
+        L12 -- Yes --> L13{"bufferIndex > 0?"}
+        L13 -- Yes --> L14["Begin CAN Packet 0x124"]
+        L14 --> L15["Loop: Write serialBuffer to CAN"]
+        L15 --> L16["End Packet"]
+        L16 --> L17{"Packet Sent?"}
+        L17 -- Yes --> L18["Print Success"]
+        L17 -- No --> L19["Print TX Error"]
+        L18 --> L20["bufferIndex = 0"]
+        L19 --> L20
+        L13 -- No --> L20
+        L12 -- No --> L21{"bufferIndex < 8?"}
+        L21 -- Yes --> L22["Store byte in serialBuffer"]
+        L22 --> L23["bufferIndex++"]
+        L23 --> L10
+        L21 -- No --> L10
+        L20 --> L10
+        
+        L10 -- No --> L24{"millis() - lastTick > 2000?"}
+        L24 -- Yes --> L25["Begin CAN Packet 0x123"]
+        L25 --> L26["Write 0xDE 0xAD 0xBE 0xEF"]
+        L26 --> L27["End Packet"]
+        L27 --> L28["lastTick = millis()"]
+        L28 --> L1
+        L24 -- No --> L1
+    end
+
+    %% ISR Phase
+    subgraph ISR ["3. ISR: onCANReceive()"]
+        I1(["CAN Interrupt Triggered"]) --> I2{"packetSize > 8?"}
+        I2 -- Yes --> I3["packetSize = 8"]
+        I2 -- No --> I4["rxPacketId = CAN.packetId()\nrxPacketSize = packetSize"]
+        I3 --> I4
+        I4 --> I5["Loop: Read CAN data into rxDataBuffer"]
+        I5 --> I6["msgReceived = true"]
+        I6 --> I7(["Exit ISR"])
+    end
